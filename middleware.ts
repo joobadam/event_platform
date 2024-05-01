@@ -1,21 +1,21 @@
-// Importáljuk a clerkMiddleware-t a '@clerk/nextjs/server' csomagból
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
-// Opcionálisan létrehozhatunk útvonalakat kijelölő segédfüggvényt
-const isProtectedRoute = createRouteMatcher([
-  '/dashboard(.*)',
-  '/forum(.*)',
+// Egyéni útvonalak létrehozása, amelyeket védeni szeretnél
+const isPublicRoute = createRouteMatcher([
+  '/',
+  '/events/:id',
+  '/api/webhook/clerk',
+  '/api/webhook/stripe',
+  '/api/uploadthing'
 ]);
 
-// Konfiguráljuk és exportáljuk a clerkMiddleware-t
+// clerkMiddleware beállítása az authentikáció kezelésére
 export default clerkMiddleware((auth, req) => {
-  // Védjük a meghatározott útvonalakat
-  if (isProtectedRoute(req)) {
+  if (!isPublicRoute(req)) {
     auth().protect();
   }
 });
 
-// Konfiguráljuk a middleware matchereit
 export const config = {
   matcher: ['/((?!.*\\..*|_next).*)', '/', '/(api|trpc)(.*)'],
 };
