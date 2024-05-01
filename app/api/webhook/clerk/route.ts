@@ -1,66 +1,77 @@
 import { Webhook } from 'svix';
 import { headers } from 'next/headers';
 import { WebhookEvent } from '@clerk/nextjs/server';
-
-// Importáljuk a createClerkClient függvényt a Clerk SDK-ból
-import { createClerkClient } from '@clerk/clerk-sdk-node';
+import { createUser, deleteUser, updateUser } from '@/lib/actions/user.actions';
+import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
-  
-  // Webhook titkos kulcsának beállítása
   const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 
   if (!WEBHOOK_SECRET) {
-    throw new Error('Please add WEBHOOK_SECRET from Clerk Dashboard to .env or .env.local');
+    throw new Error('Kérlek add hozzá a WEBHOOK_SECRET-t a Clerk Dashboard-ról a .env vagy .env.local fájlhoz');
   }
 
-  // Fejlécek lekérése
   const headerPayload = headers();
-  const svix_id = headerPayload.get('svix-id');
-  const svix_timestamp = headerPayload.get('svix-timestamp');
-  const svix_signature = headerPayload.get('svix-signature');
+  const svix_id = headerPayload.get("svix-id");
+  const svix_timestamp = headerPayload.get("svix-timestamp");
+  const svix_signature = headerPayload.get("svix-signature");
 
-  // Ha nincsenek fejlécek, adjunk vissza hibát
   if (!svix_id || !svix_timestamp || !svix_signature) {
-    return new Response('Error occurred -- no svix headers', {
-      status: 400
-    })
+    return new Response('Hiba történt -- nincsenek svix fejlécek', { status: 400 });
   }
 
-  // Test lekérése
-  const body = await req.text();
+  const payload = await req.json();
+  const body = JSON.stringify(payload);
   const wh = new Webhook(WEBHOOK_SECRET);
-
   let evt: WebhookEvent;
 
-  // Az adatok ellenőrzése a fejlécekkel
   try {
     evt = wh.verify(body, {
-      'svix-id': svix_id,
-      'svix-timestamp': svix_timestamp,
-      'svix-signature': svix_signature
+      "svix-id": svix_id,
+      "svix-timestamp": svix_timestamp,
+      "svix-signature": svix_signature,
     }) as WebhookEvent;
   } catch (err) {
-    console.error('Error verifying webhook:', err);
-    return new Response('Error occurred', {
-      status: 400
-    })
+    console.error('Hiba a webhook hitelesítésekor:', err);
+    return new Response('Hiba történt', { status: 400 });
   }
 
-  // Az esemény típusa és az azonosító lekérése
-  const { id } = evt.data;
-  const eventType = evt.type;
+  const { type, data } = evt;
 
-  console.log(`Webhook with and ID of ${id} and type of ${eventType}`);
-  console.log('Webhook body:', body);
+  switch (type) {
+    case 'user.created':
+      const newUser = await createUser({
+        clerkId: data.id,
+        email: data.email_addresses[0]?.email_address || 'default_email@example.com',
+        username: data.username || 'default_username',
+        firstName: data.first_name || 'FirstName',
+        lastName: data.last_name || 'LastName',
+        photo: data.image_url || 'default_image_url', // Cseréld le, ha szükséges
+      });
+      return NextResponse.json({ message: 'OK', user: newUser });
 
-  // Clerk kliens inicializálása a createClerkClient függvénnyel
-  const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
+    case 'user.updated':
+      const updatedUser = await updateUser(data.id, {
+        firstName: data.first_name || 'FirstName',
+        lastName: data.last_name || 'LastName',
+        username: data.username || 'default_username',
+        photo: data.image_url || 'default_image_url', // Cseréld le, ha szükséges
+      });
+      return NextResponse.json({ message: 'OK', user: updatedUser });
 
-  // Ide írhatod a további feldolgozási logikát
+    case 'user.deleted':
+      if (data.id) {
+        const deletedUser = await deleteUser(data.id);
+      } else {
+        console.error('Hiba: Az id értéke undefined.');
+      }
 
-  return new Response('', { status: 200 });
+    default:
+      return new Response('', { status: 200 });
+  }
 }
+
+
 
 
 
